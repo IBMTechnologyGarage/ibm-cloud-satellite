@@ -1,0 +1,294 @@
+Mappings: 
+  RegionMap: 
+    us-east-1: 
+      "HVM64": "ami-005b7876121b7244d"
+    us-east-2: 
+      "HVM64": "ami-0d2bf41df19c4aac7"
+    us-west-1: 
+      "HVM64": "ami-015474e24281c803d"
+    us-west-2: 
+      "HVM64": "ami-02d40d11bb3aaf3e5"
+    eu-west-1: 
+      "HVM64": "ami-020e14de09d1866b4"
+    ap-southeast-1: 
+      "HVM64": "ami-0f24fbd3cc8531844"
+    ap-northeast-1: 
+      "HVM64": "ami-0155fdd0956a0c7a0"
+
+Parameters:
+  InfrastructureName:
+    AllowedPattern: ^([a-zA-Z][a-zA-Z0-9\-]{0,26})
+    MaxLength: 27
+    MinLength: 1
+    ConstraintDescription: Infrastructure name must be alphanumeric, start with a letter, and have a maximum of 27 characters.
+    Description: A short, unique cluster ID used to tag nodes for the kubelet cloud provider.
+    Type: String
+  SatelliteInstanceType:
+    Default: m5d.xlarge
+    Type: String
+    AllowedValues:
+      - m5d.xlarge
+      - m5d.2xlarge
+      - m5d.4xlarge
+      - m5d.8xlarge
+      - m5d.12xlarge
+  Satellite1Subnet:
+    Description: The subnets, to launch the satellite nodes into.
+    Type: AWS::EC2::Subnet::Id
+  Satellite2Subnet:
+    Description: The subnets, to launch the satelite nodes into.
+    Type: AWS::EC2::Subnet::Id
+  Satellite3Subnet:
+    Description: The subnets, to launch the satellite nodes into.
+    Type: AWS::EC2::Subnet::Id
+  SecurityGroups:
+    Description: The security group ID to associate with satellite nodes.
+    Type: 'List<AWS::EC2::SecurityGroup::Id>'
+  KeyName:
+    Description: Name of an existing EC2 KeyPair to enable SSH access to the instance.
+    Type: AWS::EC2::KeyPair::KeyName
+  MakePublic:
+    Default: true
+    AllowedValues:
+      - true
+      - false
+    Description: Do you want to make nodes publicly available?
+    Type: String
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Cluster Information"
+        Parameters:
+          - InfrastructureName
+      - Label:
+          default: "Network Configuration"
+        Parameters:
+          - SecurityGroups
+          - Satellite1Subnet
+          - Satellite2Subnet
+          - Satellite3Subnet
+      - Label:
+          default: "Host Information"
+        Parameters:
+          - SatelliteInstanceType
+          - KeyName
+          - MakePublic
+    ParameterLabels:
+      InfrastructureName:
+        default: "Infrastructure Name"
+      SatelliteInstanceType:
+        default: "Instance Type"
+      MakePublic:
+        default: "Make Public"
+      KeyName:
+        default: "Key pair"
+      SecurityGroups:
+        default: "Security Groups"
+      Satellite1Subnet:
+        default: "Satellite Subnet 1"
+      Satellite2Subnet:
+        default: "Satellite Subnet 2"
+      Satellite3Subnet:
+        default: "Satellite Subnet 3"
+
+Resources:
+  CPLANE1:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      EbsOptimized: true
+      ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", HVM64]
+      InstanceType: m5d.xlarge
+      KeyName: !Ref "KeyName"
+      Monitoring: true
+      NetworkInterfaces: 
+        - AssociatePublicIpAddress: !Ref MakePublic
+          DeviceIndex: 0
+          GroupSet: !Ref "SecurityGroups"
+          SubnetId: !Ref "Satellite1Subnet"
+      Tags: 
+        - Key: !Join ["", ["kubernetes.io/cluster/", !Ref InfrastructureName]]
+          Value: "owned"
+        - Key: Name
+          Value: !Sub "${InfrastructureName}-cp-1"
+        - Key: "ibm-satellite"
+          Value: !Sub "${InfrastructureName}"
+      UserData:
+        Fn::Base64:
+          !Sub |
+            #!/bin/bash
+            HOSTNAME="${InfrastructureName}-cp-1"
+            # Set the host name
+            hostname ${InfrastructureName}-cp-1
+            echo "${InfrastructureName}-cp-1" > /etc/hostname 
+            # Enable AWS RHEL package updates for satellite
+            yum update -y
+            yum-config-manager --enable '*'
+            yum repolist all
+            yum install container-selinux unzip -y
+  CPLANE2:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      EbsOptimized: true
+      ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", HVM64]
+      InstanceType: m5d.xlarge
+      KeyName: !Ref "KeyName"
+      Monitoring: true
+      NetworkInterfaces: 
+        - AssociatePublicIpAddress: !Ref MakePublic
+          DeviceIndex: 0
+          GroupSet: !Ref "SecurityGroups"
+          SubnetId: !Ref "Satellite2Subnet"
+      Tags: 
+        - Key: !Join ["", ["kubernetes.io/cluster/", !Ref InfrastructureName]]
+          Value: "owned"
+        - Key: Name
+          Value: !Sub "${InfrastructureName}-cp-2"
+        - Key: "ibm-satellite"
+          Value: !Sub "${InfrastructureName}"
+      UserData:
+        Fn::Base64:
+          !Sub |
+            #!/bin/bash
+            HOSTNAME="${InfrastructureName}-cp-2"
+            # Set the host name
+            hostname ${InfrastructureName}-cp-2
+            echo "${InfrastructureName}-cp-2" > /etc/hostname 
+            # Enable AWS RHEL package updates for satellite
+            yum update -y
+            yum-config-manager --enable '*'
+            yum repolist all
+            yum install container-selinux unzip -y
+  CPLANE3:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      EbsOptimized: true
+      ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", HVM64]
+      InstanceType: m5d.xlarge
+      KeyName: !Ref "KeyName"
+      Monitoring: true
+      NetworkInterfaces: 
+        - AssociatePublicIpAddress: !Ref MakePublic
+          DeviceIndex: 0
+          GroupSet: !Ref "SecurityGroups"
+          SubnetId: !Ref "Satellite3Subnet"
+      Tags: 
+        - Key: !Join ["", ["kubernetes.io/cluster/", !Ref InfrastructureName]]
+          Value: "owned"
+        - Key: Name
+          Value: !Sub "${InfrastructureName}-cp-3"
+        - Key: "ibm-satellite"
+          Value: !Sub "${InfrastructureName}"
+      UserData:
+        Fn::Base64:
+          !Sub |
+            #!/bin/bash
+            HOSTNAME="${InfrastructureName}-cp-3"
+            # Set the host name
+            hostname ${InfrastructureName}-cp-3
+            echo "${InfrastructureName}-cp-3" > /etc/hostname 
+            # Enable AWS RHEL package updates for satellite
+            yum update -y
+            yum-config-manager --enable '*'
+            yum repolist all
+            yum install container-selinux unzip -y
+  SATHOST1:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      EbsOptimized: true
+      ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", HVM64]
+      InstanceType: !Ref SatelliteInstanceType
+      KeyName: !Ref "KeyName"
+      Monitoring: true
+      NetworkInterfaces: 
+        - AssociatePublicIpAddress: !Ref MakePublic
+          DeviceIndex: 0
+          GroupSet: !Ref "SecurityGroups"
+          SubnetId: !Ref "Satellite1Subnet"
+      Tags: 
+        - Key: !Join ["", ["kubernetes.io/cluster/", !Ref InfrastructureName]]
+          Value: "owned"
+        - Key: Name
+          Value: !Sub "${InfrastructureName}-host-1"
+        - Key: "ibm-satellite"
+          Value: !Sub "${InfrastructureName}"
+      UserData: 
+        Fn::Base64:
+          !Sub |
+            #!/bin/bash
+            HOSTNAME="${InfrastructureName}-host-1"
+            # Set the host name
+            hostname ${InfrastructureName}-host-1
+            echo "${InfrastructureName}-host-1" > /etc/hostname 
+            # Enable AWS RHEL package updates for satellite
+            yum update -y
+            yum-config-manager --enable '*'
+            yum repolist all
+            yum install container-selinux unzip -y
+  SATHOST2:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      EbsOptimized: true
+      ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", HVM64]
+      InstanceType: !Ref SatelliteInstanceType
+      KeyName: !Ref "KeyName"
+      Monitoring: true
+      NetworkInterfaces: 
+        - AssociatePublicIpAddress: !Ref MakePublic
+          DeviceIndex: 0
+          GroupSet: !Ref "SecurityGroups"
+          SubnetId: !Ref "Satellite2Subnet"
+      Tags: 
+        - Key: !Join ["", ["kubernetes.io/cluster/", !Ref InfrastructureName]]
+          Value: "owned"
+        - Key: Name
+          Value: !Sub "${InfrastructureName}-host-2"
+        - Key: "ibm-satellite"
+          Value: !Sub "${InfrastructureName}"
+      UserData: 
+        Fn::Base64:
+          !Sub |
+            #!/bin/bash
+            HOSTNAME="${InfrastructureName}-host-2"
+            # Set the host name
+            hostname ${InfrastructureName}-host-2
+            echo "${InfrastructureName}-host-2" > /etc/hostname 
+            # Enable AWS RHEL package updates for satellite
+            yum update -y
+            yum-config-manager --enable '*'
+            yum repolist all
+            yum install container-selinux unzip -y
+  SATHOST3:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      EbsOptimized: true
+      ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", HVM64]
+      InstanceType: !Ref SatelliteInstanceType
+      KeyName: !Ref "KeyName"
+      Monitoring: true
+      NetworkInterfaces: 
+        - AssociatePublicIpAddress: !Ref MakePublic
+          DeviceIndex: 0
+          GroupSet: !Ref "SecurityGroups"
+          SubnetId: !Ref "Satellite3Subnet"
+      Tags: 
+        - Key: !Join ["", ["kubernetes.io/cluster/", !Ref InfrastructureName]]
+          Value: "owned"
+        - Key: Name
+          Value: !Sub "${InfrastructureName}-host-3"
+        - Key: "ibm-satellite"
+          Value: !Sub "${InfrastructureName}"
+      UserData: 
+        Fn::Base64:
+          !Sub |
+            #!/bin/bash
+            HOSTNAME="${InfrastructureName}-host-3"
+            # Set the host name
+            hostname ${InfrastructureName}-host-3
+            echo "${InfrastructureName}-host-3" > /etc/hostname 
+            # Enable AWS RHEL package updates for satellite
+            yum update -y
+            yum-config-manager --enable '*'
+            yum repolist all
+            yum install container-selinux unzip -y
